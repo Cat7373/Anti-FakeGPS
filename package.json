@@ -15,9 +15,15 @@
     "tag": "latest"
   },
   "keywords": [
-    "fakegps", "check", "anti"
+    "fakegps",
+    "check",
+    "anti"
   ],
   "engines": {
     "node": ">= 16.0.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node20": "^20.1.4",
+    "typescript": "^5.4.5"
   }
 }

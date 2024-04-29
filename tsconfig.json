@@ -1,0 +1,17 @@
+{
+  "extends": "@tsconfig/node20/tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noEmitOnError": true,
+    "removeComments": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "allowSyntheticDefaultImports": true,
+    "outDir": "./built",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+  },
+  "include": ["./src/**/*.ts"],
+}

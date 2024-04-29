@@ -1,4 +1,4 @@
-import { calcDistance } from "./util"
+import { calcDistance } from "./util.js"
 
 /**
  * 检测状态
@@ -76,10 +76,10 @@ export type CheckResult = {
    */
   path: Array<[number, number, number]>,
   /**
-   * 判定路径是原地漂移还是移动了
+   * 检测是否出现过移动
    * @param threshold 检测阈值（米，默认使用 30 米）
    * @param time 最多检测多久的轨迹（毫秒，默认使用所有轨迹）
-   * @returns 移动了返回 true，原地漂移返回 false
+   * @returns 移动了返回 true，未移动返回 false
    */
   pathMoved: (threshold?: number, time?: number) => boolean
   /**
@@ -124,6 +124,10 @@ export class AntiFakeGPS extends EventTarget {
    * 通过定时器进行的检测，每隔多久进行一次
    */
   private readonly checkInterval: number
+  /**
+   * 移动检测的阈值(米)，为 null 即不启用此特性
+   */
+  private readonly moveThreshold: number | null
 
   /**
    * 调用 init 函数的时间
@@ -171,10 +175,11 @@ export class AntiFakeGPS extends EventTarget {
    * @param positionStableTimes 持续几次位置更新在正常范围内，才开始视为位置稳定(建议不小于 2)
    * @param altitudeChangeThreshold 位置更新后，每秒平均海拔变动超过多少米时，重新进行检测(若设备不支持海拔定位，则忽略此配置)
    * @param distanceChangeThreshold 位置更新后，每秒平均距离变动超过多少米时，重新进行检测
-   * @param pathSaveTime 在内存中保留最近多久的路径(仅在每次有新位置数据到来时才进行清理)
    * @param checkInterval 通过定时器进行的检测，每隔多久进行一次(ms)
+   * @param pathSaveTime 在内存中保留最近多久的路径以用于检测(仅在每次有新位置数据到来时才进行清理)
+   * @param moveThreshold 移动检测的阈值(米，不传即不启用此特性，但仍可通过 check().pathMoved() 进行检测)
    */
-  constructor({ startupTime=20000, positionUpdateInterval=20000, positionStableTimes=2, altitudeChangeThreshold=20, distanceChangeThreshold=200, pathSaveTime=60000, checkInterval=500 }={}) {
+  constructor({ startupTime=20000, positionUpdateInterval=20000, positionStableTimes=2, altitudeChangeThreshold=20, distanceChangeThreshold=200, checkInterval=500, pathSaveTime=60000, moveThreshold=-1 }={}) {
     super()
 
     this.startupTime = startupTime
@@ -184,6 +189,7 @@ export class AntiFakeGPS extends EventTarget {
     this.distanceChangeThreshold = distanceChangeThreshold
     this.pathSaveTime = pathSaveTime
     this.checkInterval = checkInterval
+    this.moveThreshold = moveThreshold <= 0 ? null : moveThreshold
   }
 
   /**
@@ -272,6 +278,13 @@ export class AntiFakeGPS extends EventTarget {
       // 清理过时的路径
       const pathStartTime = result.timestamp - this.pathSaveTime
       this.path = this.path.filter(p => p[0] >= pathStartTime)
+
+      // 如果启用了移动检测，并检测到最近移动了，状态更新为检测中
+      if (this.moveThreshold) {
+        if (this.isPathMoved(this.path, this.moveThreshold)) {
+          this.changeStatus(CheckStatus.CHECKING)
+        }
+      }
     }
   }
 
@@ -331,6 +344,49 @@ export class AntiFakeGPS extends EventTarget {
   }
 
   /**
+   * 检测是否出现过移动
+   * @param path 轨迹记录
+   * @param threshold 检测阈值（米，默认使用 30 米）
+   * @param time 最多检测多久的轨迹（毫秒，默认使用所有轨迹）
+   * @returns 移动了返回 true，未移动返回 false
+   */
+  private isPathMoved(path: Array<[number, number, number]>, threshold: number=30, usedTime: number | undefined=undefined) {
+    // 如果不够 2 个，直接返回没有移动
+    if (path.length <= 1) return false
+
+    // 找出本次计算使用的路径清单
+    let usedPath = path
+    if (usedTime) {
+      const pathStartTime = path[path.length - 1][0] - usedTime
+      usedPath = path.filter(p => p[0] >= pathStartTime)
+    }
+
+    // 如果不够 2 个，直接返回没有移动
+    if (usedPath.length <= 1) return false
+
+    // 计算所有点的中心点
+    let lon = 0, lat = 0
+    for (const p of usedPath) {
+      lon += p[1]
+      lat += p[2]
+    }
+    lon /= usedPath.length
+    lat /= usedPath.length
+
+    // 计算所有点到中心点的距离
+    let distance = 0
+    for (const p of usedPath) {
+      distance += calcDistance([p[1], p[2]], [lon, lat])
+    }
+
+    // 计算平均距离
+    distance /= usedPath.length
+
+    // 判断是否大于阈值
+    return distance > threshold
+  }
+
+  /**
    * 获取检测结果
    * @returns 检测结果
    */
@@ -348,41 +404,7 @@ export class AntiFakeGPS extends EventTarget {
       stableTime: (this.lastPositionTime && this.stableStartTime) ? this.lastPositionTime - this.stableStartTime : 0,
       stableCount: this.stableTimes,
       path,
-      pathMoved: (threshold: number=30, usedTime: number | undefined=undefined) => {
-        // 如果不够 2 个，直接返回没有移动
-        if (path.length <= 1) return false
-
-        // 找出本次计算使用的路径清单
-        let usedPath = path
-        if (usedTime) {
-          const pathStartTime = path[path.length - 1][0] - usedTime
-          usedPath = path.filter(p => p[0] >= pathStartTime)
-        }
-
-        // 如果不够 2 个，直接返回没有移动
-        if (usedPath.length <= 1) return false
-
-        // 计算所有点的中心点
-        let lon = 0, lat = 0
-        for (const p of usedPath) {
-          lon += p[1]
-          lat += p[2]
-        }
-        lon /= usedPath.length
-        lat /= usedPath.length
-
-        // 计算所有点到中心点的距离
-        let distance = 0
-        for (const p of usedPath) {
-          distance += calcDistance([p[1], p[2]], [lon, lat])
-        }
-
-        // 计算平均距离
-        distance /= usedPath.length
-
-        // 判断是否大于阈值
-        return distance > threshold
-      },
+      pathMoved: (threshold: number=30, usedTime: number | undefined=undefined) => this.isPathMoved(path, threshold, usedTime),
       isOk: () => isOk,
     }
   }

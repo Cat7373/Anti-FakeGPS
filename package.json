@@ -1,0 +1,23 @@
+{
+  "name": "fakegps-check",
+  "version": "1.0.0-dev.1",
+  "description": "模拟定位检测工具",
+  "author": "Cat73",
+  "license": "MIT",
+  "repository": "https://github.com/Cat7373/fakegps-check",
+  "bugs": {
+    "url": "https://github.com/Cat7373/fakegps-check/issues"
+  },
+  "homepage": "https://github.com/Cat7373/fakegps-check#readme",
+  "main": "src/index.js",
+  "type": "module",
+  "publishConfig": {
+    "tag": "latest"
+  },
+  "keywords": [
+    "fakegps", "check"
+  ],
+  "engines": {
+    "node": ">= 16.0.0"
+  }
+}

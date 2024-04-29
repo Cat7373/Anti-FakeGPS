@@ -1,4 +1,4 @@
-import { calcDistance } from "./util.js"
+import { calcDistance, isPathMoved } from "./util.js"
 
 /**
  * 检测状态
@@ -72,7 +72,7 @@ export type CheckResult = {
    */
   stableCount: number,
   /**
-   * 前一段时间的轨迹(时间(ms), 经度, 纬度)
+   * 前一段时间的轨迹: [时间(ms), 经度, 纬度]
    */
   path: Array<[number, number, number]>,
   /**
@@ -201,7 +201,7 @@ export class AntiFakeGPS extends EventTarget {
     this.initTime = Date.now()
 
     // 注册定位器
-    navigator.geolocation.watchPosition(this.onSuccess.bind(this), this.onError.bind(this), { enableHighAccuracy: true })
+    navigator.geolocation.watchPosition(this.onPositionSuccess.bind(this), this.onPositionError.bind(this), { enableHighAccuracy: true })
 
     // 注册周期性检测代码
     setInterval(this.onTimer.bind(this), this.checkInterval)
@@ -210,7 +210,7 @@ export class AntiFakeGPS extends EventTarget {
   /**
    * 定位成功回调
    */
-  private onSuccess(result: GeolocationPosition): void {
+  private onPositionSuccess(result: GeolocationPosition): void {
     // 投递事件
     this.dispatchEvent(new CustomEvent('position', { detail: { result }}))
 
@@ -281,7 +281,7 @@ export class AntiFakeGPS extends EventTarget {
 
       // 如果启用了移动检测，并检测到最近移动了，状态更新为检测中
       if (this.moveThreshold) {
-        if (this.isPathMoved(this.path, this.moveThreshold)) {
+        if (isPathMoved(this.path, this.moveThreshold)) {
           this.changeStatus(CheckStatus.CHECKING)
         }
       }
@@ -291,7 +291,7 @@ export class AntiFakeGPS extends EventTarget {
   /**
    * 定位失败回调
    */
-  private onError(err: GeolocationPositionError): void {
+  private onPositionError(err: GeolocationPositionError): void {
     // 投递事件
     this.dispatchEvent(new CustomEvent('positionError', { detail: { err }}))
 
@@ -344,49 +344,6 @@ export class AntiFakeGPS extends EventTarget {
   }
 
   /**
-   * 检测是否出现过移动
-   * @param path 轨迹记录
-   * @param threshold 检测阈值（米，默认使用 30 米）
-   * @param time 最多检测多久的轨迹（毫秒，默认使用所有轨迹）
-   * @returns 移动了返回 true，未移动返回 false
-   */
-  private isPathMoved(path: Array<[number, number, number]>, threshold: number=30, usedTime: number | undefined=undefined) {
-    // 如果不够 2 个，直接返回没有移动
-    if (path.length <= 1) return false
-
-    // 找出本次计算使用的路径清单
-    let usedPath = path
-    if (usedTime) {
-      const pathStartTime = path[path.length - 1][0] - usedTime
-      usedPath = path.filter(p => p[0] >= pathStartTime)
-    }
-
-    // 如果不够 2 个，直接返回没有移动
-    if (usedPath.length <= 1) return false
-
-    // 计算所有点的中心点
-    let lon = 0, lat = 0
-    for (const p of usedPath) {
-      lon += p[1]
-      lat += p[2]
-    }
-    lon /= usedPath.length
-    lat /= usedPath.length
-
-    // 计算所有点到中心点的距离
-    let distance = 0
-    for (const p of usedPath) {
-      distance += calcDistance([p[1], p[2]], [lon, lat])
-    }
-
-    // 计算平均距离
-    distance /= usedPath.length
-
-    // 判断是否大于阈值
-    return distance > threshold
-  }
-
-  /**
    * 获取检测结果
    * @returns 检测结果
    */
@@ -404,7 +361,7 @@ export class AntiFakeGPS extends EventTarget {
       stableTime: (this.lastPositionTime && this.stableStartTime) ? this.lastPositionTime - this.stableStartTime : 0,
       stableCount: this.stableTimes,
       path,
-      pathMoved: (threshold: number=30, usedTime: number | undefined=undefined) => this.isPathMoved(path, threshold, usedTime),
+      pathMoved: (threshold: number=30, usedTime: number | undefined=undefined) => isPathMoved(path, threshold, usedTime),
       isOk: () => isOk,
     }
   }
@@ -420,7 +377,7 @@ export class AntiFakeGPS extends EventTarget {
   /**
    * 如果当前状态为 OK，强制修改为 CHECKED
    */
-  forgeCheckIfOk() {
+  forgeCheckIfOk(): void {
     if (this.isOk()) {
       this.changeStatus(CheckStatus.CHECKING)
     }

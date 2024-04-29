@@ -9,7 +9,7 @@
     "url": "https://github.com/Cat7373/anti-fakegps/issues"
   },
   "homepage": "https://github.com/Cat7373/anti-fakegps#readme",
-  "main": "src/index.js",
+  "main": "lib/index.js",
   "type": "module",
   "publishConfig": {
     "tag": "latest"
@@ -19,11 +19,16 @@
     "check",
     "anti"
   ],
+  "scripts": {
+    "build": "tsc"
+  },
   "engines": {
     "node": ">= 16.0.0"
   },
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.4",
     "typescript": "^5.4.5"
-  }
+  },
+  "files": [
+    "lib"
+  ]
 }

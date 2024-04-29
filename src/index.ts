@@ -4,7 +4,7 @@
 export enum CheckStatus {
   /**
    * 未准备好(未调用 init 函数)
-   * 1. 调用 new FakeGPSCheck() 后
+   * 1. 调用 new AntiFakeGPS() 后
    */
   NOT_READY = 'NOT_READY',
   /**
@@ -120,7 +120,7 @@ function calcDistance([lon1, lat1]: [number, number], [lon2, lat2]: [number, num
  * 用法示例（文档）: TODO
  * 事件（实现）: TODO
  */
-export class FakeGPSCheck extends EventTarget {
+export class AntiFakeGPS extends EventTarget {
   /**
    * 初始化后，最多用多长时间用于获取定位，超过视为定位失败(ms)
    */
@@ -431,19 +431,19 @@ export class FakeGPSCheck extends EventTarget {
 }
 
 /**
- * 使用 useFakeGPSCheck 时的唯一实例
+ * 使用 useAntiFakeGPS 时的唯一实例
  */
-let instance: FakeGPSCheck | undefined
+let instance: AntiFakeGPS | undefined
 
 /**
  * 使用模拟定位检测工具(首次调用自动初始化)
  * 如果希望定位数据和检测结果尽快可用，建议在网页加载过程中尽可能早的调用一次本方法
  * @returns 模拟定位检测工具的实例
  */
-export function useFakeGPSCheck(): Omit<FakeGPSCheck, 'init' | 'dispatchEvent'> {
+export function useAntiFakeGPS(): Omit<AntiFakeGPS, 'init' | 'dispatchEvent'> {
   if (instance) return instance
 
-  instance = new FakeGPSCheck()
+  instance = new AntiFakeGPS()
   instance.init()
   return instance
 }

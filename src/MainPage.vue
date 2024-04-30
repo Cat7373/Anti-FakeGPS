@@ -47,7 +47,7 @@
       p 3. 仅支持有物理 GPS 硬件的设备（通常是移动端）
       p
         span 4. 更多细节，请参阅
-        a.text-sky-500(href="https://blog.cat73.org#TODO", target="_blank") 博客文章
+        a.text-sky-500(href="https://blog.cat73.org/posts/2024/09-anti-fakegps", target="_blank") 博客文章
         span 了解更多
       p
         span 5.&nbsp;
@@ -93,8 +93,7 @@ async function submit() {
       showNotify({ type: 'warning', message: '请打开手机定位开关，并允许网页定位，再使用此功能' })
       return
     case 'LONG_TIME_NOT_UPDATE':
-      showConfirmDialog({ title: '警告', message: '请勿使用模拟定位等作弊软件，本次行为已被记录，如果你确实在项目现场，可继续操作，未来公司会二次排查确认，确认要继续么？' })
-      return
+      await showConfirmDialog({ title: '警告', message: '请勿使用模拟定位等作弊软件，本次行为已被记录，如果你确实在项目现场，可继续操作，未来公司会二次排查确认，确认要继续么？' })
   }
 
   if (!mockField2.value) {

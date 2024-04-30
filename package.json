@@ -1,6 +1,6 @@
 {
   "name": "anti-fakegps",
-  "version": "1.0.0",
+  "version": "1.0.1-dev.1",
   "description": "模拟定位检测工具",
   "author": "Cat73",
   "license": "MIT",
@@ -14,7 +14,7 @@
   "main": "lib/index.js",
   "type": "module",
   "publishConfig": {
-    "tag": "latest"
+    "tag": "experimental"
   },
   "keywords": [
     "fakegps",

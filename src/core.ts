@@ -1,4 +1,4 @@
-import { calcDistance, isPathMoved } from "./util.js"
+import { calcDistance, isPathMoved } from './util.js'
 
 /**
  * 检测状态
@@ -77,7 +77,7 @@ export type CheckResult = {
   path: Array<[number, number, number]>,
   /**
    * 检测是否出现过移动
-   * @param threshold 检测阈值（米，默认使用 30 米）
+   * @param threshold 检测阈值（米，默认使用 20 米）
    * @param time 最多检测多久的轨迹（毫秒，默认使用所有轨迹）
    * @returns 移动了返回 true，未移动返回 false
    */
@@ -139,6 +139,10 @@ export class AntiFakeGPS extends EventTarget {
   private status = CheckStatus.NOT_READY
 
   /**
+   * 上次调用 timer 的时间
+   */
+  private lastTimerTime: number | null = null
+  /**
    * 最新一次定位成功的时间
    */
   private lastPositionTime: number | null = null
@@ -179,7 +183,7 @@ export class AntiFakeGPS extends EventTarget {
    * @param pathSaveTime 在内存中保留最近多久的路径以用于检测(仅在每次有新位置数据到来时才进行清理)
    * @param moveThreshold 移动检测的阈值(米，不传即不启用此特性，但仍可通过 check().pathMoved() 进行检测)
    */
-  constructor({ startupTime=20000, positionUpdateInterval=20000, positionStableTimes=2, altitudeChangeThreshold=20, distanceChangeThreshold=200, checkInterval=500, pathSaveTime=60000, moveThreshold=-1 }={}) {
+  constructor({ startupTime=20000, positionUpdateInterval=20000, positionStableTimes=2, altitudeChangeThreshold=20, distanceChangeThreshold=200, checkInterval=500, pathSaveTime=30000, moveThreshold=-1 }={}) {
     super()
 
     this.startupTime = startupTime
@@ -201,10 +205,13 @@ export class AntiFakeGPS extends EventTarget {
     this.initTime = Date.now()
 
     // 注册定位器
-    navigator.geolocation.watchPosition(this.onPositionSuccess.bind(this), this.onPositionError.bind(this), { enableHighAccuracy: true })
+    navigator.geolocation.watchPosition(result => this.onPositionSuccess(result), err => this.onPositionError(err), { enableHighAccuracy: true, timeout: 10_000 })
+
+    // 先立刻获取一次定位
+    navigator.geolocation.getCurrentPosition(result => this.onPositionSuccess(result), err => this.onPositionError(err), { enableHighAccuracy: true, timeout: 10_000 })
 
     // 注册周期性检测代码
-    setInterval(this.onTimer.bind(this), this.checkInterval)
+    setInterval(() => this.onTimer(), this.checkInterval)
   }
 
   /**
@@ -214,78 +221,82 @@ export class AntiFakeGPS extends EventTarget {
     // 投递事件
     this.dispatchEvent(new CustomEvent('position', { detail: { result }}))
 
+    // 位置没变，后续就不用处理了
     const { coords } = result
+    if (coords.longitude == this.lastLongitude && coords.latitude == this.lastLatitude) {
+      return
+    }
 
-    // 如果位置有改变
-    if (coords.longitude != this.lastLongitude || coords.latitude != this.lastLatitude) {
-      // 投递事件
-      this.dispatchEvent(new CustomEvent('positionChange', { detail: { result }}))
+    // 投递事件
+    this.dispatchEvent(new CustomEvent('positionChange', { detail: { result }}))
 
-      // 如果状态在 POSITIONING、POSITION_FAILED、LONG_TIME_NOT_UPDATE，更新为检测中
-      if (this.status == CheckStatus.POSITIONING || this.status == CheckStatus.POSITION_FAILED || this.status == CheckStatus.LONG_TIME_NOT_UPDATE) {
+    // 如果状态在 POSITIONING、POSITION_FAILED、LONG_TIME_NOT_UPDATE，更新为检测中
+    if (this.status == CheckStatus.POSITIONING || this.status == CheckStatus.POSITION_FAILED || this.status == CheckStatus.LONG_TIME_NOT_UPDATE) {
+      this.changeStatus(CheckStatus.CHECKING)
+    }
+
+    // 本次更新距离上次更新的时间，若为 init 后首次获取到位置，此值为 null
+    const time = this.lastPositionTime ? result.timestamp - this.lastPositionTime : null
+
+    // 如果海拔变动超过 altitudeChangeThreshold 约定的范围，状态更新为检测中
+    if (coords.altitude && this.lastAltitude && time) {
+      const diff = Math.abs(this.lastAltitude - coords.altitude)
+      const diffPreSecond = diff / time * 1000
+
+      if (diffPreSecond > this.altitudeChangeThreshold) {
         this.changeStatus(CheckStatus.CHECKING)
       }
+    }
 
-      // 本次更新距离上次更新的时间，若为 init 后首次获取到位置，此值为 null
-      const time = this.lastPositionTime ? result.timestamp - this.lastPositionTime : null
+    // 如果距离变动超过 distanceChangeThreshold 约定的范围，状态更新为检测中
+    if (this.lastPositionTime && time) {
+      const distance = calcDistance([this.lastLongitude!, this.lastLatitude!], [coords.longitude, coords.latitude])
+      const distancePreSecond = distance / time * 1000
 
-      // 如果海拔变动超过 altitudeChangeThreshold 约定的范围，状态更新为检测中
-      if (coords.altitude && this.lastAltitude && time) {
-        const diff = Math.abs(this.lastAltitude - coords.altitude)
-        const diffPreSecond = diff / time * 1000
-
-        if (diffPreSecond > this.altitudeChangeThreshold) {
-          this.changeStatus(CheckStatus.CHECKING)
-        }
-      }
-
-      // 如果距离变动超过 distanceChangeThreshold 约定的范围，状态更新为检测中
-      if (this.lastPositionTime && time) {
-        const distance = calcDistance([this.lastLongitude!, this.lastLatitude!], [coords.longitude, coords.latitude])
-        const distancePreSecond = distance / time * 1000
-
-        if (distancePreSecond > this.distanceChangeThreshold) {
-          this.changeStatus(CheckStatus.CHECKING)
-        }
-      }
-
-      // 如果距离上次位置更新，时间间隔在合理范围内（即首次定位到某个位置，会被忽略）
-      if (time && time < this.positionUpdateInterval) {
-        // 如果是第一次稳定，修改稳定开始时间
-        if (this.stableTimes == 1) {
-          this.stableStartTime = result.timestamp
-        }
-
-        // 增加间隔正常的次数
-        this.stableTimes += 1
-        // 如果间隔在正常范围内的次数，达到 positionStableTimes 约定的次数，将状态由检测中变更为正常
-        if (this.status == CheckStatus.CHECKING && this.stableTimes >= this.positionStableTimes) {
-          this.changeStatus(CheckStatus.OK)
-        }
-      }
-
-      // 保存定位成功的时间
-      this.lastPositionTime = result.timestamp
-
-      // 保存定位结果
-      this.lastLongitude = coords.longitude
-      this.lastLatitude = coords.latitude
-      this.lastAltitude = coords.altitude
-
-      // 保存路径
-      this.path.push([result.timestamp, coords.longitude, coords.latitude])
-
-      // 清理过时的路径
-      const pathStartTime = result.timestamp - this.pathSaveTime
-      this.path = this.path.filter(p => p[0] >= pathStartTime)
-
-      // 如果启用了移动检测，并检测到最近移动了，状态更新为检测中
-      if (this.moveThreshold) {
-        if (isPathMoved(this.path, this.moveThreshold)) {
-          this.changeStatus(CheckStatus.CHECKING)
-        }
+      if (distancePreSecond > this.distanceChangeThreshold) {
+        this.changeStatus(CheckStatus.CHECKING)
       }
     }
+
+    // 如果距离上次位置更新，时间间隔在合理范围内（即首次定位到某个位置，会被忽略）
+    if (time && time < this.positionUpdateInterval) {
+      // 如果是第一次稳定，修改稳定开始时间
+      if (this.stableTimes == 1) {
+        this.stableStartTime = result.timestamp
+      }
+
+      // 增加间隔正常的次数
+      this.stableTimes += 1
+      // 如果间隔在正常范围内的次数，达到 positionStableTimes 约定的次数，将状态由检测中变更为正常
+      if (this.status == CheckStatus.CHECKING && this.stableTimes >= this.positionStableTimes) {
+        this.changeStatus(CheckStatus.OK)
+      }
+    }
+
+    // 保存定位成功的时间
+    this.lastPositionTime = result.timestamp
+
+    // 保存定位结果
+    this.lastLongitude = coords.longitude
+    this.lastLatitude = coords.latitude
+    this.lastAltitude = coords.altitude
+
+    // 保存路径
+    this.path.push([result.timestamp, coords.longitude, coords.latitude])
+
+    // 清理过时的路径
+    const pathStartTime = result.timestamp - this.pathSaveTime
+    this.path = this.path.filter(p => p[0] >= pathStartTime)
+
+    // 如果启用了移动检测，并检测到最近移动了，状态更新为检测中
+    if (this.moveThreshold) {
+      if (isPathMoved(this.path, this.moveThreshold)) {
+        this.changeStatus(CheckStatus.CHECKING)
+      }
+    }
+
+    // 投递事件
+    this.dispatchEvent(new CustomEvent('positionChangeEnd', { detail: { result }}))
   }
 
   /**
@@ -313,6 +324,13 @@ export class AntiFakeGPS extends EventTarget {
       this.changeStatus(CheckStatus.POSITION_FAILED)
       return
     }
+
+    // 如果距离上次调用超过 3 个 timer 周期，则将状态变更为检测中
+    const now = Date.now()
+    if (this.lastTimerTime && now - this.lastTimerTime > this.checkInterval * 3) {
+      this.changeStatus(CheckStatus.CHECKING)
+    }
+    this.lastTimerTime = now
 
     // 如果状态正常或正在检测，且超过规定时间未更新位置，标记状态为有问题
     if ((this.status == CheckStatus.OK || this.status == CheckStatus.CHECKING) && Date.now() - this.lastPositionTime! > this.positionUpdateInterval) {
@@ -361,7 +379,7 @@ export class AntiFakeGPS extends EventTarget {
       stableTime: (this.lastPositionTime && this.stableStartTime) ? this.lastPositionTime - this.stableStartTime : 0,
       stableCount: this.stableTimes,
       path,
-      pathMoved: (threshold: number=30, usedTime: number | undefined=undefined) => isPathMoved(path, threshold, usedTime),
+      pathMoved: (threshold: number=20, usedTime: number | undefined=undefined) => isPathMoved(path, threshold, usedTime),
       isOk: () => isOk,
     }
   }

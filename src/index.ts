@@ -1,4 +1,4 @@
-import { AntiFakeGPS } from "./core.js"
+import { AntiFakeGPS } from './core.js'
 
 /**
  * 使用 useAntiFakeGPS 时的唯一实例

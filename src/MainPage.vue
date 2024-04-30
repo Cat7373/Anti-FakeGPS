@@ -1,6 +1,8 @@
 <template lang="pug">
 .p-4.min-h-full.bg-slate-50.space-y-4
-  .text-center.text-2xl Anti-FakeGPS
+  .header
+    .text-center.text-2xl Anti-FakeGPS
+    .text-center.text-sm.text-gray-500 请使用手机访问体验
 
   van-cell-group(inset)
     van-tabs
@@ -42,11 +44,11 @@
   fieldset.border.rounded-md.px-4.py-2
     legend 说明
     .text-sm.leading-6
-      p 1. 只依赖网页能访问到的数据，判定是否存在模拟定位
+      p 1. 只依赖网页能访问到的数据，检测模拟定位
       p 2. 适用巡逻打卡拍照等场景，可防市面上绝大部分模拟定位软件
-      p 3. 仅支持有物理 GPS 硬件的设备（通常是移动端）
+      p 3. 仅支持手机等有物理 GPS 硬件的设备
       p
-        span 4. 更多细节，请参阅
+        span 4. 更多细节，阅读
         a.text-sky-500(href="https://blog.cat73.org/posts/2024/09-anti-fakegps", target="_blank") 博客文章
         span 了解更多
       p

@@ -354,11 +354,12 @@ export class AntiFakeGPS extends EventTarget {
         break
     }
 
-    // 投递事件
-    this.dispatchEvent(new CustomEvent('changeStatus', { detail: { oldStatus: this.status, newStatus }}))
-
     // 修改状态
+    const oldStatus = this.status
     this.status = newStatus
+
+    // 投递事件
+    this.dispatchEvent(new CustomEvent('statusChange', { detail: { oldStatus, newStatus }}))
   }
 
   /**
@@ -367,7 +368,7 @@ export class AntiFakeGPS extends EventTarget {
    */
   check(): CheckResult {
     const time = this.lastPositionTime
-    const path = this.path.filter(() => true) // deepClone
+    const path = this.path.filter(() => true) // clone
     const isOk = this.status == CheckStatus.OK
 
     return {

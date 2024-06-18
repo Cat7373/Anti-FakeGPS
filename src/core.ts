@@ -173,6 +173,23 @@ export class AntiFakeGPS extends EventTarget {
   private stableTimes = 0
 
   /**
+   * 调试模式是否启用
+   */
+  private debug = false
+  /**
+   * 调试模式输出的经度
+   */
+  private debugLongitude = .0
+  /**
+   * 调试模式输出的纬度
+   */
+  private debugLatitude = .0
+  /**
+   * 调试模式输出的海拔
+   */
+  private debugAltitude = .0
+
+  /**
    * 构造一个模拟定位检测器
    * @param startupTime 初始化后，最多用多长时间用于获取定位，超过视为定位失败(ms)
    * @param positionUpdateInterval 正常定位时，间隔不应该超过多久(ms)
@@ -363,25 +380,58 @@ export class AntiFakeGPS extends EventTarget {
   }
 
   /**
+   * 配置调试模式
+   * 调试模式下，可手动指定经纬度、海拔，检测结果固定为通过，pathMoved 固定为 false，path 固定为一个点，已经稳定点固定为 600s，100 个
+   * @param longitude 手动指定经度
+   * @param latitude 手动指定纬度
+   * @param altitude 手动指定海拔，默认为 100
+   * @param enable 是否启用调试模式，如需要关闭，可不传前三个参数，本参数传 false
+   */
+  debugMode(longitude: number, latitude: number, altitude = 100, enable = true) {
+    this.debug = true
+    this.debugLongitude = longitude
+    this.debugLatitude = latitude
+    this.debugAltitude = altitude
+  }
+
+  /**
    * 获取检测结果
    * @returns 检测结果
    */
   check(): CheckResult {
-    const time = this.lastPositionTime
-    const path = this.path.filter(() => true) // clone
-    const isOk = this.status == CheckStatus.OK
+    if (this.debug) {
+      const time = this.lastPositionTime
+      const path = [[ this.debugLongitude, this.debugLatitude, this.debugAltitude ]] as [number, number, number][]
 
-    return {
-      status: this.status,
-      longitude: this.lastLongitude,
-      latitude: this.lastLatitude,
-      altitude: this.lastAltitude,
-      time,
-      stableTime: (this.lastPositionTime && this.stableStartTime) ? this.lastPositionTime - this.stableStartTime : 0,
-      stableCount: this.stableTimes,
-      path,
-      pathMoved: (threshold: number=20, usedTime: number | undefined=undefined) => isPathMoved(path, threshold, usedTime),
-      isOk: () => isOk,
+      return {
+        status: CheckStatus.OK,
+        longitude: this.debugLongitude,
+        latitude: this.debugLatitude,
+        altitude: this.debugAltitude,
+        time,
+        stableTime: 600_0000,
+        stableCount: 100,
+        path,
+        pathMoved: () => false,
+        isOk: () => true,
+      }
+    } else {
+      const time = this.lastPositionTime
+      const path = this.path.filter(() => true) // clone
+      const isOk = this.status == CheckStatus.OK
+
+      return {
+        status: this.status,
+        longitude: this.lastLongitude,
+        latitude: this.lastLatitude,
+        altitude: this.lastAltitude,
+        time,
+        stableTime: (this.lastPositionTime && this.stableStartTime) ? this.lastPositionTime - this.stableStartTime : 0,
+        stableCount: this.stableTimes,
+        path,
+        pathMoved: (threshold: number=20, usedTime: number | undefined=undefined) => isPathMoved(path, threshold, usedTime),
+        isOk: () => isOk,
+      }
     }
   }
 
@@ -390,7 +440,11 @@ export class AntiFakeGPS extends EventTarget {
    * @returns 检测是否通过
    */
   isOk(): boolean {
-    return this.status == CheckStatus.OK
+    if (this.debug) {
+      return true
+    } else {
+      return this.status == CheckStatus.OK
+    }
   }
 
   /**

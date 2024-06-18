@@ -19,7 +19,8 @@
   "keywords": [
     "fakegps",
     "check",
-    "anti"
+    "anti",
+    "gps"
   ],
   "scripts": {
     "build": "tsc"
